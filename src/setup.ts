@@ -183,6 +183,21 @@ function getClaudeDesktopConfigPath(): string | null {
   return null;
 }
 
+function isChatGPTInstalled(): boolean {
+  const platform = os.platform();
+  if (platform === "darwin") {
+    return (
+      fs.existsSync("/Applications/ChatGPT.app") ||
+      fs.existsSync(path.join(os.homedir(), "Applications", "ChatGPT.app"))
+    );
+  }
+  if (platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    return fs.existsSync(path.join(localAppData, "Programs", "ChatGPT", "ChatGPT.exe"));
+  }
+  return false;
+}
+
 function getCursorConfigPath(): string {
   return path.join(os.homedir(), ".cursor", "mcp.json");
 }
@@ -409,6 +424,21 @@ async function main(): Promise<void> {
         );
       }
     }
+    console.log("");
+  }
+
+  // ── Step 9: ChatGPT Desktop instructions ─────────────────────────
+  if (isChatGPTInstalled()) {
+    const isWindows = process.platform === "win32";
+    const mcpJson = isWindows
+      ? `{\n  "command": "cmd",\n  "args": ["/c", "npx", "-y", "brightspace-mcp-server@latest"]\n}`
+      : `{\n  "command": "npx",\n  "args": ["-y", "brightspace-mcp-server@latest"]\n}`;
+    console.log(yellow("  ChatGPT Desktop detected."));
+    console.log(dim("  ChatGPT doesn't support automatic MCP config — add it manually:"));
+    console.log(dim("  1. Open ChatGPT Desktop → Settings → Tools → Add MCP tool → Add manually"));
+    console.log(dim("  2. Paste this config:"));
+    console.log("");
+    console.log(mcpJson);
     console.log("");
   }
 
