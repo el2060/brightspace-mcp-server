@@ -2,11 +2,11 @@
 
 > **By [Rohan Muppa](https://github.com/rohanmuppa), ECE @ Purdue**
 
-Talk to your Brightspace courses with AI. Ask about grades, due dates, announcements, and more. Works with Claude, ChatGPT, and Cursor.
+Talk to your Brightspace courses with AI. Ask about grades, due dates, announcements, and more. Works with Claude, ChatGPT, Cursor, and Windsurf.
 
-This is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server. MCP lets AI apps like ChatGPT or Claude talk to outside tools. This server connects your AI to Brightspace so it can pull your grades, assignments, and course content on demand.
+This is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server — the open standard for connecting AI apps to external tools. This server connects your AI to D2L Brightspace so it can pull your grades, assignments, syllabus, and course content on demand.
 
-Works with any school that uses Brightspace.
+Works with any school that uses D2L Brightspace — Purdue, USC, Carleton, and hundreds more.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/RohanMuppa/brightspace-mcp-server/main/docs/how-it-works.svg" alt="Architecture diagram" width="100%">
@@ -93,6 +93,32 @@ Windows:
 ```
 
 **Cursor** (`~/.cursor/mcp.json`):
+
+Mac/Linux:
+```json
+{
+  "mcpServers": {
+    "brightspace": {
+      "command": "npx",
+      "args": ["-y", "brightspace-mcp-server@latest"]
+    }
+  }
+}
+```
+
+Windows:
+```json
+{
+  "mcpServers": {
+    "brightspace": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "brightspace-mcp-server@latest"]
+    }
+  }
+}
+```
+
+**Windsurf** (`~/.windsurf/mcp.json`):
 
 Mac/Linux:
 ```json

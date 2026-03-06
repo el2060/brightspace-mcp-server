@@ -2,7 +2,7 @@
   "name": "brightspace-mcp-server",
   "version": "1.1.5",
   "mcpName": "io.github.rohanmuppa/brightspace",
-  "description": "MCP server for Brightspace (D2L). Check grades, due dates, announcements, rosters and more via Claude, ChatGPT, Cursor, or any MCP client.",
+  "description": "MCP server for Brightspace (D2L). Check grades, due dates, assignments, announcements, syllabus, rosters and more via Claude, ChatGPT, Cursor, Windsurf, or any MCP client.",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -69,10 +69,19 @@
     "claude",
     "chatgpt",
     "cursor",
+    "windsurf",
     "purdue",
     "university",
     "model-context-protocol",
     "brightspace-api",
-    "d2l-api"
+    "d2l-api",
+    "assignments",
+    "announcements",
+    "syllabus",
+    "student",
+    "ai",
+    "duo",
+    "sso",
+    "d2l-brightspace"
   ]
 }
