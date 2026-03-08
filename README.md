@@ -199,6 +199,29 @@ npx brightspace-mcp-server auth
 ![D2L Brightspace](https://img.shields.io/badge/D2L_Brightspace-003865?logoColor=white)
 ![npm](https://img.shields.io/badge/npm-CB3837?logo=npm&logoColor=white)
 
+## Contributing
+
+Want to add your school, build a new tool, or fix something? Fork the repo, make your changes, and open a pull request. If it gets merged, it ships to every user automatically.
+
+```bash
+git clone https://github.com/RohanMuppa/brightspace-mcp-server.git
+cd brightspace-mcp-server
+npm install
+npm run dev
+```
+
+**Add your school:** Add a preset to `SCHOOL_PRESETS` in `src/setup.ts`. If your school's login flow is different, add a handler in `src/auth/`.
+
+**Add a new tool:** Create a file in `src/tools/`, add the schema in `schemas.ts`, export it in `src/tools/index.ts`, and register it in `src/index.ts`. Use any existing tool as a template.
+
+## Forking
+
+You're free to fork this repo and run your own version. Just clone it, build it, and point your AI client to the local `build/index.js` instead of using `npx`. You won't need npm at all.
+
+Keep in mind that forks don't receive updates from this repo automatically. You'll need to pull changes manually if you want to stay current. If your changes could help others, consider opening a PR so everyone benefits.
+
+Licensed under AGPL-3.0. Forks must also be open source.
+
 ## Updates
 
 Automatic. Every time your AI client starts a session, it runs `npx brightspace-mcp-server@latest` which pulls the newest version from npm. No action needed.
