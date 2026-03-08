@@ -189,17 +189,7 @@ npx brightspace-mcp-server auth
 - All traffic to Brightspace is HTTPS
 - Nothing is sent anywhere except your school's login page
 
-## Built With
-
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
-![MCP](https://img.shields.io/badge/Model_Context_Protocol-black?logo=anthropic&logoColor=white)
-![D2L Brightspace](https://img.shields.io/badge/D2L_Brightspace-003865?logoColor=white)
-![npm](https://img.shields.io/badge/npm-CB3837?logo=npm&logoColor=white)
-
-## Contributing
+## Contributing & Forking
 
 Want to add your school, build a new tool, or fix something? Fork the repo, make your changes, and open a pull request. If it gets merged, it ships to every user automatically.
 
@@ -214,11 +204,7 @@ npm run dev
 
 **Add a new tool:** Create a file in `src/tools/`, add the schema in `schemas.ts`, export it in `src/tools/index.ts`, and register it in `src/index.ts`. Use any existing tool as a template.
 
-## Forking
-
-You're free to fork this repo and run your own version. Just clone it, build it, and point your AI client to the local `build/index.js` instead of using `npx`. You won't need npm at all.
-
-Keep in mind that forks don't receive updates from this repo automatically. You'll need to pull changes manually if you want to stay current. If your changes could help others, consider opening a PR so everyone benefits.
+**Run your own version:** You can also fork and run it independently. Clone it, build it, and point your AI client to the local `build/index.js` instead of using `npx`. No npm needed. Just know that forks don't receive updates from this repo automatically. If your changes could help others, consider opening a PR.
 
 Licensed under AGPL-3.0. Forks must also be open source.
 
