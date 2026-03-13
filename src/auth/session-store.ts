@@ -6,6 +6,7 @@
 
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { TokenData, EncryptedData, SessionFile } from "../types/index.js";
@@ -20,7 +21,8 @@ const SESSION_VERSION = 1;
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // GCM recommended IV length
 const AUTH_TAG_LENGTH = 16; // GCM auth tag length
-const SALT = "brightspace-mcp-salt";
+const SALT_LENGTH = 16;
+const SALT_FILE_NAME = "salt";
 
 /**
  * SessionStore manages encrypted token persistence to disk.
@@ -36,16 +38,40 @@ export class SessionStore {
   }
 
   /**
+   * Get or create a random salt unique to this installation.
+   * Stored at ~/.d2l-session/salt with restricted permissions.
+   */
+  private getOrCreateSalt(): Buffer {
+    const saltPath = path.join(this.sessionDir, SALT_FILE_NAME);
+    try {
+      return fsSync.readFileSync(saltPath);
+    } catch {
+      // Salt doesn't exist yet — create session dir and generate one
+      const isWindows = process.platform === "win32";
+      fsSync.mkdirSync(this.sessionDir, {
+        recursive: true,
+        ...(isWindows ? {} : { mode: 0o700 }),
+      });
+      const salt = crypto.randomBytes(SALT_LENGTH);
+      fsSync.writeFileSync(saltPath, salt, {
+        ...(isWindows ? {} : { mode: 0o600 }),
+      });
+      return salt;
+    }
+  }
+
+  /**
    * Derive AES-256 key from username and hostname using scrypt.
-   * This provides per-machine, per-user encryption without requiring a password.
+   * Uses a per-installation random salt to prevent precomputation attacks.
    */
   private deriveKey(): Buffer {
     const username = os.userInfo().username;
     const hostname = os.hostname();
     const keyMaterial = username + hostname;
+    const salt = this.getOrCreateSalt();
 
     // Use scrypt to derive a 32-byte key (256 bits for AES-256)
-    return crypto.scryptSync(keyMaterial, SALT, 32);
+    return crypto.scryptSync(keyMaterial, salt, 32);
   }
 
   /**
