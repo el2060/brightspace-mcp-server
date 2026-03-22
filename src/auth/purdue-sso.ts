@@ -28,6 +28,13 @@ export class PurdueSSOFlow {
   }
 
   /**
+   * Returns true if credentials are available for automated SSO login.
+   */
+  hasCredentials(): boolean {
+    return Boolean(this.config.username && this.config.password);
+  }
+
+  /**
    * Execute the complete Microsoft Entra ID SSO login flow for Purdue.
    * Handles institution selector, email/password entry, MFA (TOTP or manual), and "stay signed in" prompt.
    *
@@ -57,6 +64,30 @@ export class PurdueSSOFlow {
       return true;
     } catch (error) {
       log("ERROR", "SSO login flow failed", error);
+      return false;
+    }
+  }
+
+  /**
+   * Manual login fallback: let the user type credentials and complete MFA themselves.
+   * The browser stays open in headed mode while we wait for /d2l/home.
+   */
+  async manualLogin(page: Page): Promise<boolean> {
+    try {
+      log("INFO", "Starting manual login flow (no saved credentials)");
+      log("INFO", "Please log in using the browser window that just opened.");
+
+      // Navigate past the campus selector so the user lands on the Shibboleth form
+      await this.handleCampusSelector(page);
+
+      // Wait up to 5 minutes for the user to complete login manually
+      log("INFO", "Waiting up to 5 minutes for you to complete login and MFA...");
+      await page.waitForURL(/\/d2l\/home/, { timeout: 300000 });
+      log("INFO", "Manual login successful - reached Brightspace home");
+
+      return true;
+    } catch (error) {
+      log("ERROR", "Manual login flow failed or timed out", error);
       return false;
     }
   }

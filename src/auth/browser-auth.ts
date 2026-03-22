@@ -92,8 +92,14 @@ export class BrowserAuth {
       // lock files persist and prevent all future auth attempts.
       await this.clearStaleLockFiles(browserDataDir);
 
+      // Force headed mode when no credentials — user must interact with the browser
+      const headless = this.ssoFlow.hasCredentials() ? this.config.headless : false;
+      if (!this.ssoFlow.hasCredentials() && this.config.headless) {
+        log("INFO", "Overriding headless mode — browser must be visible for manual login");
+      }
+
       const launchOptions = {
-        headless: this.config.headless,
+        headless,
         viewport: { width: 1280, height: 720 } as const,
         args: BrowserAuth.buildChromiumArgs(),
         timeout: 60000,
@@ -110,7 +116,9 @@ export class BrowserAuth {
       const page = context.pages()[0] || (await context.newPage());
 
       // CRITICAL: Set up token interception BEFORE navigation
-      const tokenPromise = this.setupTokenInterception(page);
+      // Use longer timeout for manual login (5 min) vs automated SSO (2 min)
+      const interceptTimeout = this.ssoFlow.hasCredentials() ? 120000 : 300000;
+      const tokenPromise = this.setupTokenInterception(page, interceptTimeout);
 
       // Navigate and login if needed
       const alreadyAuthenticated = await this.navigateAndLogin(page);
@@ -308,16 +316,16 @@ export class BrowserAuth {
    * Set up passive network request listener to capture Bearer token.
    * MUST be called BEFORE page.goto() to avoid race condition.
    */
-  private setupTokenInterception(page: Page): Promise<string> {
+  private setupTokenInterception(page: Page, timeoutMs = 120000): Promise<string> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(
           new BrowserAuthError(
-            "Token interception timed out after 120 seconds",
+            `Token interception timed out after ${timeoutMs / 1000} seconds`,
             "token_interception"
           )
         );
-      }, 120000);
+      }, timeoutMs);
 
       page.on("request", (request) => {
         const url = request.url();
@@ -358,8 +366,15 @@ export class BrowserAuth {
       const needsLogin = !currentUrl.includes("/d2l/home");
 
       if (needsLogin) {
-        log("INFO", `Login required (redirected to ${currentUrl}) - starting SSO flow`);
-        const loginSuccess = await this.ssoFlow.login(page);
+        let loginSuccess: boolean;
+
+        if (this.ssoFlow.hasCredentials()) {
+          log("INFO", `Login required (redirected to ${currentUrl}) - starting SSO flow`);
+          loginSuccess = await this.ssoFlow.login(page);
+        } else {
+          log("INFO", `Login required (redirected to ${currentUrl}) - opening browser for manual login`);
+          loginSuccess = await this.ssoFlow.manualLogin(page);
+        }
 
         if (!loginSuccess) {
           throw new BrowserAuthError("SSO login flow failed", "sso_login");
