@@ -135,7 +135,7 @@ npm run dev
 
 **Run your own version:** You can also fork and run it independently. Clone it, build it, and point your AI client to the local `build/index.js` instead of using `npx`. No npm needed. Just know that forks don't receive updates from this repo automatically. If your changes could help others, consider opening a PR.
 
-Licensed under AGPL-3.0. Forks must also be open source.
+Licensed under the MIT License.
 
 ## Updates
 
@@ -147,4 +147,4 @@ If you ever suspect you're on an old version, run `npm cache clean --force` to c
 
 Proudly made for Boilermakers by [Rohan Muppa](https://github.com/rohanmuppa) 🚂
 
-[Report a bug](https://github.com/rohanmuppa/brightspace-mcp-server/issues) · AGPL-3.0 · Copyright 2026 Rohan Muppa
+[Report a bug](https://github.com/rohanmuppa/brightspace-mcp-server/issues) · MIT · Copyright 2026 Rohan Muppa
