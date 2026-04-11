@@ -1,7 +1,7 @@
 /**
  * Purdue Brightspace MCP Server
  * Copyright (c) 2025 Rohan Muppa. All rights reserved.
- * Licensed under AGPL-3.0 — see LICENSE file for details.
+ * Licensed under MIT — see LICENSE file for details.
  */
 
 import type { Page } from "playwright";
@@ -147,10 +147,21 @@ export class PurdueSSOFlow {
       log("INFO", "Timeout: 120 seconds");
       log("INFO", "Browser is running in headed mode - please approve the MFA request on your phone");
 
-      // Wait for MFA approval (page will automatically redirect after approval)
-      // We don't need to click anything - just wait for the redirect
-      await page.waitForLoadState("networkidle", { timeout: 120000 });
-      log("INFO", "MFA approval detected");
+      // Wait for MFA approval by watching for the post-MFA redirect.
+      // Using waitForURL instead of networkidle because networkidle fires
+      // after 500ms of no network activity, which can happen while the MFA
+      // page UI finishes loading but before the user approves the Duo push.
+      await page.waitForURL(
+        (url) => {
+          const href = url.toString();
+          return href.includes("/d2l/") ||
+                 href.includes("kmsi") ||
+                 href.includes("/sso/") ||
+                 href.includes("SAMLResponse");
+        },
+        { timeout: 120000 }
+      );
+      log("INFO", `MFA completed — redirected to: ${page.url()}`);
     } catch (error) {
       throw new BrowserAuthError(
         "MFA approval timed out after 120 seconds",

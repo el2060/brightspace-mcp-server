@@ -1,13 +1,14 @@
 /**
  * Purdue Brightspace MCP Server
  * Copyright (c) 2025 Rohan Muppa. All rights reserved.
- * Licensed under AGPL-3.0 — see LICENSE file for details.
+ * Licensed under MIT — see LICENSE file for details.
  */
 
 import { chromium } from "playwright";
 import type { BrowserContext, Page } from "playwright";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import type { AppConfig, TokenData } from "../types/index.js";
 import { BrowserAuthError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
@@ -90,7 +91,7 @@ export class BrowserAuth {
       // Remove stale Chromium lock files that can block persistent context launch.
       // On Windows, if the browser is killed by antivirus or force-closed, these
       // lock files persist and prevent all future auth attempts.
-      await this.clearStaleLockFiles(browserDataDir);
+      await this.validateAndClearLockFiles(browserDataDir);
 
       // Force headed mode when no credentials — user must interact with the browser
       const headless = this.ssoFlow.hasCredentials() ? this.config.headless : false;
@@ -559,10 +560,19 @@ export class BrowserAuth {
       );
 
       // Check if storage state file exists
+      let stats: Awaited<ReturnType<typeof fs.stat>>;
       try {
-        await fs.access(storageStatePath);
+        stats = await fs.stat(storageStatePath);
       } catch {
         log("DEBUG", "No existing storage state to load");
+        return;
+      }
+
+      // Skip loading stale cookies that would fake "already authenticated"
+      const ageMs = Date.now() - stats.mtimeMs;
+      const maxAgeMs = this.config.tokenTtl * 1000;
+      if (ageMs > maxAgeMs) {
+        log("INFO", `Storage state is ${Math.round(ageMs / 60000)}min old (TTL ${this.config.tokenTtl}s) — skipping stale cookies`);
         return;
       }
 
@@ -643,6 +653,7 @@ export class BrowserAuth {
         "storage-state.json"
       );
       await context.storageState({ path: storageStatePath });
+      await fs.chmod(storageStatePath, 0o600);
       log("DEBUG", `Storage state saved to ${storageStatePath}`);
     } catch (error) {
       log("WARN", "Failed to save storage state", error);
@@ -664,18 +675,27 @@ export class BrowserAuth {
       timeout: number;
     }
   ): Promise<BrowserContext> {
+    // Validate lock files before every launch attempt
+    await this.validateAndClearLockFiles(browserDataDir);
+
     try {
-      return await chromium.launchPersistentContext(browserDataDir, options);
+      // Wrap in Promise.race so a hung launch (e.g. stale SingletonLock
+      // that wasn't caught) still falls into the retry path
+      const launchPromise = chromium.launchPersistentContext(browserDataDir, options);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout: browser launch hung")), options.timeout)
+      );
+      return await Promise.race([launchPromise, timeoutPromise]);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      const isTimeout = errMsg.includes("Timeout") || errMsg.includes("timeout");
+      const isTimeout = errMsg.includes("Timeout") || errMsg.includes("timeout") || errMsg.includes("hung");
 
       if (isTimeout) {
         log("WARN", "Browser launch timed out — clearing lock files and retrying");
-        await this.clearStaleLockFiles(browserDataDir);
+        await this.validateAndClearLockFiles(browserDataDir);
         return await chromium.launchPersistentContext(browserDataDir, {
           ...options,
-          timeout: 90000, // More generous timeout on retry
+          timeout: 90000,
         });
       }
 
@@ -684,19 +704,77 @@ export class BrowserAuth {
   }
 
   /**
-   * Remove stale Chromium lock files from the browser data directory.
+   * Validate and remove stale Chromium lock files from the browser data directory.
    * Playwright's persistent context uses Chromium's SingletonLock mechanism.
    * If the browser is killed unexpectedly (antivirus, force close, crash),
    * these lock files persist and block all future launch attempts.
+   *
+   * For SingletonLock (a symlink whose target is "hostname-pid"), we check
+   * whether the owning process is still alive before removing it. This avoids
+   * deleting a lock held by a legitimate running instance.
    */
-  private async clearStaleLockFiles(browserDataDir: string): Promise<void> {
+  private async validateAndClearLockFiles(browserDataDir: string): Promise<void> {
+    // Ensure the directory exists before scanning
+    try {
+      await fs.access(browserDataDir);
+    } catch {
+      return; // Directory doesn't exist yet, nothing to clean
+    }
+
     const lockFiles = ["SingletonLock", "SingletonCookie", "SingletonSocket"];
     for (const lockFile of lockFiles) {
+      const lockPath = path.join(browserDataDir, lockFile);
       try {
-        await fs.unlink(path.join(browserDataDir, lockFile));
-        log("WARN", `Removed stale lock file: ${lockFile}`);
+        const stat = await fs.lstat(lockPath);
+
+        if (stat.isSymbolicLink() && lockFile === "SingletonLock") {
+          // SingletonLock is a symlink with target "hostname-pid"
+          const target = await fs.readlink(lockPath);
+          const dashIdx = target.lastIndexOf("-");
+          if (dashIdx > 0) {
+            const lockHostname = target.substring(0, dashIdx);
+            const lockPid = parseInt(target.substring(dashIdx + 1), 10);
+
+            if (lockHostname !== os.hostname()) {
+              // Lock from a different machine (e.g. NFS home dir, or stale after network change)
+              log("WARN", `Removing SingletonLock from different host (${lockHostname} vs ${os.hostname()})`);
+              await fs.unlink(lockPath);
+              continue;
+            }
+
+            if (!isNaN(lockPid)) {
+              try {
+                process.kill(lockPid, 0); // Signal 0 checks if process exists
+                // Process is alive, leave the lock alone
+                log("DEBUG", `SingletonLock held by live process ${lockPid}, skipping`);
+                continue;
+              } catch (killErr: unknown) {
+                const code = (killErr as NodeJS.ErrnoException).code;
+                if (code === "ESRCH") {
+                  // Process is dead, safe to remove
+                  log("WARN", `Removing SingletonLock from dead process ${lockPid}`);
+                  await fs.unlink(lockPath);
+                  continue;
+                }
+                if (code === "EPERM") {
+                  // Process exists but we lack permissions, leave it alone
+                  log("DEBUG", `SingletonLock held by process ${lockPid} (EPERM), skipping`);
+                  continue;
+                }
+              }
+            }
+          }
+
+          // Could not parse target, remove as a safety measure
+          log("WARN", `Removing unparseable SingletonLock: ${target}`);
+          await fs.unlink(lockPath);
+        } else {
+          // Regular file (SingletonCookie, SingletonSocket) or unknown symlink
+          await fs.unlink(lockPath);
+          log("WARN", `Removed stale lock file: ${lockFile}`);
+        }
       } catch {
-        // File doesn't exist — expected in normal operation
+        // File doesn't exist, expected in normal operation
       }
     }
   }
