@@ -111,6 +111,22 @@ npx brightspace-mcp-server auth
 
 **Headless login fails (Windows)** → SSO login flows can fail in headless mode on Windows. The default is headed (a browser window opens). If you set `D2L_HEADLESS=true` and auth fails, switch back to headed mode.
 
+**Auth hangs or browser won't open**
+
+Delete stale session files and retry:
+```bash
+rm -rf ~/.d2l-session/session.json ~/.d2l-session/storage-state.json ~/.d2l-session/browser-data/SingletonLock
+npx brightspace-mcp-server auth
+```
+
+**Still running an old version after update**
+
+npx caches packages locally. Clear the cache to force a fresh download:
+```bash
+npx clear-npx-cache
+npx brightspace-mcp-server@latest
+```
+
 ## Security
 
 - Credentials stay on your machine at `~/.brightspace-mcp/config.json` (restricted permissions)

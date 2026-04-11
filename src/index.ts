@@ -2,7 +2,7 @@
 /**
  * Brightspace MCP Server
  * Copyright (c) 2025 Rohan Muppa. All rights reserved.
- * Licensed under AGPL-3.0 — see LICENSE file for details.
+ * Licensed under MIT — see LICENSE file for details.
  *
  * https://github.com/rohanmuppa/brightspace-mcp-server
  */
@@ -14,6 +14,9 @@ import { loadConfig } from "./utils/config.js";
 import { TokenManager, AuthRunner } from "./auth/index.js";
 import { D2LApiClient } from "./api/index.js";
 import { initUpdateChecker, getUpdateNotice } from "./utils/update-checker.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import {
   registerGetMyCourses,
   registerGetUpcomingDueDates,
@@ -27,6 +30,17 @@ import {
   registerGetSyllabus,
   registerGetDiscussions,
 } from "./tools/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PKG_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, "..", "package.json"), "utf-8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // ── Subcommand routing (before any MCP initialization) ──────────────
 const subcommand = process.argv[2];
@@ -55,12 +69,12 @@ if (subcommand === 'setup') {
       // Create MCP server instance
       const server = new McpServer({
         name: "brightspace",
-        version: "1.1.2",
+        version: PKG_VERSION,
         description: "Brightspace MCP Server — by Rohan Muppa (github.com/rohanmuppa/brightspace-mcp-server)",
       });
       log("INFO", "");
       log("INFO", "========================================");
-      log("INFO", "  Brightspace MCP Server v1.1.2");
+      log("INFO", `  Brightspace MCP Server v${PKG_VERSION}`);
       log("INFO", "  By Rohan Muppa — ECE @ Purdue");
       log("INFO", "  github.com/rohanmuppa/brightspace-mcp-server");
       log("INFO", "========================================");
