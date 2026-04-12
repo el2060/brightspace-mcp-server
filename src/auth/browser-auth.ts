@@ -61,12 +61,15 @@ export class BrowserAuth {
     const args = ["--disable-blink-features=AutomationControlled"];
 
     if (process.platform === "win32") {
-      // Reduce GPU issues on Windows (common cause of rendering failures)
       args.push("--disable-gpu");
     }
 
+    // On macOS, NSPersistentUIRestorer is disabled via `defaults write` in
+    // applyMacOSCrashGuard() — see issue #10. Passing "-ApplePersistenceIgnoreState YES"
+    // as argv doesn't work here because Playwright's launchPersistentContext rejects
+    // non-flag positional arguments.
+
     if (BrowserAuth.isWSLOrDocker()) {
-      // WSL and Docker lack a proper sandboxing namespace — Chromium won't launch without this
       args.push("--no-sandbox", "--disable-setuid-sandbox");
       log("INFO", "Detected WSL/Docker environment — launching Chromium with --no-sandbox");
     }
@@ -74,11 +77,98 @@ export class BrowserAuth {
     return args;
   }
 
+  /**
+   * Prevent Chrome for Testing from SIGTRAP'ing on launch on macOS (issue #10).
+   *
+   * Three layers, all idempotent and cheap:
+   *   1. ApplePersistenceIgnoreState — disables NSPersistentUIRestorer's crash-prompt
+   *      modal, which Chrome for Testing's AppKit bridge cannot handle.
+   *   2. IIO_LaunchInfo=0 — resets LaunchServices' per-app crash counter so macOS
+   *      stops triggering the recovery pathway in the first place.
+   *   3. Nuke the Cocoa saved-application-state bundle — if it exists, AppKit tries
+   *      to replay window state during launch and can crash the browser process.
+   *
+   * Runs before every launch. None of these are destructive to user data; Chrome
+   * for Testing is a disposable test profile.
+   */
+  private static async applyMacOSCrashGuard(): Promise<void> {
+    if (process.platform !== "darwin") return;
+
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFile);
+
+    try {
+      await execFileAsync("defaults", [
+        "write",
+        "com.google.chrome.for.testing",
+        "ApplePersistenceIgnoreState",
+        "-bool",
+        "yes",
+      ]);
+    } catch {
+      // Non-fatal
+    }
+
+    try {
+      await execFileAsync("defaults", [
+        "write",
+        "com.google.chrome.for.testing",
+        "IIO_LaunchInfo",
+        "-int",
+        "0",
+      ]);
+    } catch {
+      // Non-fatal
+    }
+
+    try {
+      const savedState = path.join(
+        os.homedir(),
+        "Library",
+        "Saved Application State",
+        "com.google.chrome.for.testing.savedState"
+      );
+      await fs.rm(savedState, { recursive: true, force: true });
+    } catch {
+      // Non-fatal
+    }
+
+    log("DEBUG", "Applied macOS crash guards for Chrome for Testing");
+  }
+
+  /**
+   * Recovery step: the current browser-data profile is corrupted in a way that
+   * makes Chromium SIGTRAP during launch (issue #10). Move it aside so the next
+   * launch attempt gets a clean profile. Cheap — user just re-authenticates.
+   */
+  private async quarantineBrowserDataDir(browserDataDir: string): Promise<void> {
+    try {
+      const stamp = Date.now();
+      const quarantined = `${browserDataDir}.corrupted.${stamp}`;
+      await fs.rename(browserDataDir, quarantined);
+      log(
+        "WARN",
+        `Quarantined corrupted browser profile to ${quarantined} — starting fresh`
+      );
+    } catch (error) {
+      // If rename fails (permissions, missing dir), try a recursive delete instead.
+      try {
+        await fs.rm(browserDataDir, { recursive: true, force: true });
+        log("WARN", "Deleted corrupted browser profile — starting fresh");
+      } catch (rmError) {
+        log("WARN", "Failed to quarantine browser profile", rmError);
+      }
+    }
+  }
+
   async authenticate(): Promise<TokenData> {
     let context: BrowserContext | null = null;
 
     try {
       log("INFO", "Starting browser authentication");
+
+      await BrowserAuth.applyMacOSCrashGuard();
 
       const mkdirOpts: { recursive: true; mode?: number } = { recursive: true };
       if (process.platform !== "win32") {
@@ -110,6 +200,23 @@ export class BrowserAuth {
 
       log("INFO", "Browser context launched");
 
+      // If the user Ctrl+C's while Chrome is running, Node tears down the
+      // subprocess with SIGKILL — Chrome writes "Crashed" to exit_type, the
+      // LaunchServices crash counter ticks up, and the next launch can SIGTRAP.
+      // Hook SIGINT/SIGTERM so we close the context gracefully first. See issue #10.
+      const contextRef = context;
+      const cleanShutdown = async (signal: NodeJS.Signals) => {
+        log("WARN", `Received ${signal} — closing browser cleanly`);
+        try {
+          await contextRef.close();
+        } catch {
+          // Already closing
+        }
+        process.exit(130);
+      };
+      process.once("SIGINT", cleanShutdown);
+      process.once("SIGTERM", cleanShutdown);
+
       // Load saved storage state if it exists (cookies + localStorage)
       // This works around Playwright bug #36139 where session cookies don't persist
       await this.loadStorageState(context);
@@ -124,89 +231,38 @@ export class BrowserAuth {
       // Navigate and login if needed
       const alreadyAuthenticated = await this.navigateAndLogin(page);
 
-      // If already authenticated via cookies, Bearer tokens won't appear in
-      // normal page requests. Try strategies to extract a usable token.
-      // Each strategy validates the token against /users/whoami before accepting.
+      // Run the extraction strategy chain on BOTH paths. Modern Brightspace's
+      // /d2l/home uses cookie auth and emits no Bearer header, so the passive
+      // interceptor never fires on a fresh manual login — the chain rescues
+      // us via localStorage instead. See issue #10.
+      log("INFO", alreadyAuthenticated
+        ? "Session cookies active — trying to extract API token"
+        : "Login complete — extracting API token from session");
+
+      const extracted = await this.tryExtractToken(page, context);
+      if (extracted) {
+        await this.saveStorageState(context);
+        log("INFO", "Authentication complete");
+        return extracted;
+      }
+
+      // Last resort for the cookie-restore path: clear cookies, force full
+      // re-login through SSO, and race the passive listener as a final fallback.
       if (alreadyAuthenticated) {
-        log("INFO", "Session cookies active — trying to extract API token");
-
-        // Strategy 0: Try extracting Bearer token from localStorage (fastest)
-        const localStorageToken = await this.extractLocalStorageToken(page);
-        if (localStorageToken) {
-          const valid = await this.validateToken(localStorageToken);
-          if (valid) {
-            log("INFO", "Extracted valid Bearer token from localStorage");
-            const now = Date.now();
-            const tokenData: TokenData = {
-              accessToken: localStorageToken,
-              capturedAt: now,
-              expiresAt: now + this.config.tokenTtl * 1000,
-              source: "browser",
-            };
-            await this.saveStorageState(context);
-            return tokenData;
-          }
-          log("WARN", "localStorage Bearer token failed validation, trying next strategy");
-        }
-
-        // Strategy 1: Navigate to API endpoint to trigger Bearer-bearing requests
-        try {
-          log("DEBUG", "Navigating to API endpoint to trigger token capture");
-          await page.goto(
-            `${this.config.baseUrl}/d2l/api/lp/1.57/users/whoami`,
-            { waitUntil: "load", timeout: 15000 }
-          );
-        } catch {
-          log("DEBUG", "Direct API navigation did not produce Bearer token");
-        }
-
-        // Strategy 2: Try extracting XSRF token from D2L's JavaScript context
-        const xsrfToken = await this.extractXsrfToken(page);
-        if (xsrfToken) {
-          const valid = await this.validateToken(xsrfToken);
-          if (valid) {
-            log("INFO", "Extracted valid XSRF token from page context");
-            const now = Date.now();
-            const tokenData: TokenData = {
-              accessToken: xsrfToken,
-              capturedAt: now,
-              expiresAt: now + this.config.tokenTtl * 1000,
-              source: "browser",
-            };
-            await this.saveStorageState(context);
-            return tokenData;
-          }
-          log("WARN", "XSRF token failed validation, trying next strategy");
-        }
-
-        // Strategy 3: Extract session cookies for cookie-based API auth
-        const cookieToken = await this.extractCookieToken(context);
-        if (cookieToken) {
-          const valid = await this.validateToken(cookieToken);
-          if (valid) {
-            log("INFO", "Extracted valid session cookie for API auth");
-            const now = Date.now();
-            const tokenData: TokenData = {
-              accessToken: cookieToken,
-              capturedAt: now,
-              expiresAt: now + this.config.tokenTtl * 1000,
-              source: "browser",
-            };
-            await this.saveStorageState(context);
-            return tokenData;
-          }
-          log("WARN", "Cookie token failed validation, trying next strategy");
-        }
-
-        // Strategy 4: Clear cookies and force full re-login through SSO
         log("WARN", "Could not extract valid token from existing session, forcing re-login");
         await context.clearCookies();
-        // Close the old page and open a fresh one to kill any in-flight
-        // Brightspace redirects that would interrupt our next navigation
         await page.close();
         const freshPage = await context.newPage();
         const freshTokenPromise = this.setupTokenInterception(freshPage);
         await this.navigateAndLogin(freshPage);
+
+        const freshExtracted = await this.tryExtractToken(freshPage, context);
+        if (freshExtracted) {
+          await this.saveStorageState(context);
+          log("INFO", "Authentication complete");
+          return freshExtracted;
+        }
+
         const accessToken = await freshTokenPromise;
         log("INFO", "Bearer token captured after forced re-login");
         const now = Date.now();
@@ -220,7 +276,8 @@ export class BrowserAuth {
         return tokenData;
       }
 
-      // Normal flow: token captured during SSO redirect
+      // Fresh-login final fallback: wait on the passive listener.
+      // Rarely reached in practice — tryExtractToken typically hits localStorage first.
       log("INFO", "Waiting for Bearer token from network interception");
       const accessToken = await tokenPromise;
       log("INFO", "Bearer token captured successfully");
@@ -272,6 +329,68 @@ export class BrowserAuth {
         }
       }
     }
+  }
+
+  /**
+   * Run the token extraction strategy chain, cheapest to most invasive.
+   * Each strategy validates against /users/whoami before returning.
+   * Returns null if every strategy fails.
+   */
+  private async tryExtractToken(
+    page: Page,
+    context: BrowserContext
+  ): Promise<TokenData | null> {
+    const build = (token: string): TokenData => {
+      const now = Date.now();
+      return {
+        accessToken: token,
+        capturedAt: now,
+        expiresAt: now + this.config.tokenTtl * 1000,
+        source: "browser",
+      };
+    };
+
+    // Strategy 0: localStorage (D2L.Fetch.Tokens) — fastest
+    const lsToken = await this.extractLocalStorageToken(page);
+    if (lsToken && (await this.validateToken(lsToken))) {
+      log("INFO", "Extracted valid Bearer token from localStorage");
+      return build(lsToken);
+    }
+    if (lsToken) log("WARN", "localStorage Bearer token failed validation, trying next strategy");
+
+    // Strategy 1: Force a Bearer fetch by hitting the API, then re-check localStorage
+    try {
+      log("DEBUG", "Navigating to API endpoint to trigger token capture");
+      await page.goto(
+        `${this.config.baseUrl}/d2l/api/lp/1.57/users/whoami`,
+        { waitUntil: "load", timeout: 15000 }
+      );
+      const lsToken2 = await this.extractLocalStorageToken(page);
+      if (lsToken2 && (await this.validateToken(lsToken2))) {
+        log("INFO", "Extracted valid Bearer token from localStorage after API nudge");
+        return build(lsToken2);
+      }
+    } catch {
+      log("DEBUG", "Direct API navigation did not produce Bearer token");
+    }
+
+    // Strategy 2: XSRF / page JS context
+    const xsrfToken = await this.extractXsrfToken(page);
+    if (xsrfToken && (await this.validateToken(xsrfToken))) {
+      log("INFO", "Extracted valid XSRF token from page context");
+      return build(xsrfToken);
+    }
+    if (xsrfToken) log("WARN", "XSRF token failed validation, trying next strategy");
+
+    // Strategy 3: Cookie-based auth
+    const cookieToken = await this.extractCookieToken(context);
+    if (cookieToken && (await this.validateToken(cookieToken))) {
+      log("INFO", "Extracted valid session cookie for API auth");
+      return build(cookieToken);
+    }
+    if (cookieToken) log("WARN", "Cookie token failed validation");
+
+    return null;
   }
 
   /**
@@ -689,6 +808,29 @@ export class BrowserAuth {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       const isTimeout = errMsg.includes("Timeout") || errMsg.includes("timeout") || errMsg.includes("hung");
+
+      // macOS: Chrome for Testing died during launch with SIGTRAP / browser
+      // closed. The profile is likely corrupted from prior crashes. Quarantine
+      // it, reapply the crash guards, and retry with a fresh profile.
+      // See issue #10.
+      const isMacBrowserCrash =
+        process.platform === "darwin" &&
+        (errMsg.includes("Target page, context or browser has been closed") ||
+          errMsg.includes("SIGTRAP") ||
+          errMsg.includes("did exit"));
+
+      if (isMacBrowserCrash) {
+        log(
+          "WARN",
+          "Chrome for Testing crashed during launch — quarantining profile and retrying"
+        );
+        await this.quarantineBrowserDataDir(browserDataDir);
+        await BrowserAuth.applyMacOSCrashGuard();
+        return await chromium.launchPersistentContext(browserDataDir, {
+          ...options,
+          timeout: 90000,
+        });
+      }
 
       if (isTimeout) {
         log("WARN", "Browser launch timed out — clearing lock files and retrying");
