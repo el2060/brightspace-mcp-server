@@ -17,6 +17,9 @@ export { registerGetRoster } from "./get-roster.js";
 export { registerGetSyllabus } from "./get-syllabus.js";
 export { registerGetDiscussions } from "./get-discussions.js";
 
+// OAL design review tool
+export { registerReviewModuleAgainstOal } from "./review-module-against-oal.js";
+
 // Lecturer / Dropbox tools
 export { registerGetDropboxFolders } from "./get-dropbox-folders.js";
 export { registerGetDropboxSubmissions } from "./get-dropbox-submissions.js";

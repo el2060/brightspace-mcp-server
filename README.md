@@ -129,6 +129,7 @@ A browser window will open. Sign in with Microsoft SSO and approve the Duo promp
 | Syllabus | "What are the learning outcomes for this module?" · "Summarise the assessment breakdown for IT3001" |
 | Discussions | "What are students saying in the project discussion thread?" · "Summarise the latest posts in the Week 5 discussion" |
 | Due dates | "Give me a timeline of all upcoming deadlines across my courses" |
+| OAL design review | "Review my IT2001 module design against the OAL toolkit" · "What gaps does my Week 3 content page have against the OAL criteria?" |
 
 ---
 
@@ -178,8 +179,73 @@ Summarise student discussion threads to identify common questions or issues befo
 **Due date planning**
 Get an overview of all deadlines across your modules to spot clashes or plan assessment spacing.
 
+**OAL module design review**
+Use the `review_module_against_oal` tool to retrieve your module's content structure alongside OAL toolkit criteria from the Digital Learning module. The AI then compares the two and suggests concrete design improvements aligned with NP's Online Active Learning framework (Communication, Content, Collaboration, Practice & Feedback).
+
 **Future: Assignment review and feedback drafting** *(planned)*
 Once dropbox review tools are implemented, you will be able to retrieve student submissions and use the AI to draft rubric-guided feedback. This is not yet available.
+
+---
+
+## OAL Module Design Review
+
+The `review_module_against_oal` tool uses Playwright to read your teaching module's Brightspace page and optionally read the OAL toolkit in the Digital Learning module, then returns a structured payload for AI-driven pedagogical review.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `targetCourseId` | string | ✅ | Brightspace org-unit ID of the module to review (e.g. `"650410"`) |
+| `targetUrl` | string (URL) | optional | Full URL of a specific content page to review (week / unit page). If omitted, the tool uses the course home page |
+| `oalToolkitUrl` | string (URL) | optional | Full URL of the OAL toolkit page in the Digital Learning module. When supplied, OAL criteria are extracted and included in the response |
+
+**Returned JSON shape**
+
+```json
+{
+  "targetCourseId": "650410",
+  "moduleSummary": {
+    "title": "IT2001 — Networking Fundamentals",
+    "url": "https://nplms.polite.edu.sg/d2l/le/content/650410/Home",
+    "sections": [
+      { "heading": "Week 3 — TCP/IP", "level": 2, "text": "...", "activityLinks": ["Quiz 3", "Discussion: Routing"] }
+    ]
+  },
+  "oalCriteria": {
+    "communication": ["..."],
+    "content": ["..."],
+    "collaboration": ["..."],
+    "practiceFeedback": ["..."],
+    "rawText": "..."
+  },
+  "notes": "Use moduleSummary and oalCriteria to evaluate the module design..."
+}
+```
+
+**Example prompts**
+
+```
+Review my IT2001 course (org-unit 650410) against the OAL toolkit at https://nplms.polite.edu.sg/d2l/le/content/99999/Home.
+Summarise how well it addresses each OAL design area and suggest improvements.
+```
+
+```
+Compare the Week 3 content page for course 650410 against the OAL toolkit.
+URL: https://nplms.polite.edu.sg/d2l/le/content/650410/viewContent/1234567/View
+OAL toolkit URL: https://nplms.polite.edu.sg/d2l/le/content/99999/Home
+```
+
+**How AI-side analysis works**
+
+The tool retrieves content only — it does not perform the pedagogical evaluation itself. After calling the tool, the AI (VS Code Copilot, Claude, etc.) compares `moduleSummary` with `oalCriteria` and generates recommendations. No additional configuration is needed; the analysis happens in the prompt layer.
+
+For best results, add the following to your `.github/copilot-instructions.md` or VS Code system prompt:
+
+```
+When I call the review_module_against_oal tool, inspect the returned moduleSummary and oalCriteria. Then:
+1. Summarise how well the module addresses each OAL design area (Communication, Content, Collaboration, Practice & Feedback).
+2. Highlight strengths and specific gaps.
+3. Suggest concrete design refinements that would better align the module with the OAL toolkit.
+Use NP / Digital Learning context and language appropriate for lecturers.
+```
 
 ---
 

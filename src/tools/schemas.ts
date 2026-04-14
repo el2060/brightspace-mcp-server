@@ -153,6 +153,15 @@ export const GetRubricsForObjectSchema = z.object({
     .describe("Dropbox folder ID whose rubric(s) to retrieve."),
 });
 
+export const ReviewModuleAgainstOalSchema = z.object({
+  targetCourseId: z.string().min(1)
+    .describe("Brightspace org-unit ID of the teaching module to review (e.g. '650410')."),
+  targetUrl: z.string().url().optional()
+    .describe("Full URL of the specific content page to review (e.g. a week or unit page). If omitted, the tool navigates to the course home page."),
+  oalToolkitUrl: z.string().url().optional()
+    .describe("Full URL of the OAL toolkit page in the Digital Learning module. When provided, the tool extracts OAL criteria text from that page and includes it in the response. If omitted, oalCriteria will be null."),
+});
+
 export const PostDropboxFeedbackSchema = z.object({
   orgUnitId: z.coerce.number().int().positive()
     .describe("Course / org-unit ID."),

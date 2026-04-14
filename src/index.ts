@@ -36,6 +36,7 @@ import {
   registerGetDropboxFeedback,
   registerGetRubricsForObject,
   registerPostDropboxFeedback,
+  registerReviewModuleAgainstOal,
 } from "./tools/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -204,13 +205,16 @@ if (subcommand === 'setup') {
       registerGetRubricsForObject(server, apiClient);
       registerPostDropboxFeedback(server, apiClient);
 
-      log("DEBUG", "MCP tools registered (18 core tools, total 19 with check_auth)");
+      // OAL design review tool
+      registerReviewModuleAgainstOal(server, config);
+
+      log("DEBUG", "MCP tools registered (19 core tools, total 20 with check_auth)");
 
       // Connect stdio transport
       const transport = new StdioServerTransport();
       await server.connect(transport);
 
-      log("INFO", "Brightspace MCP Server by Rohan Muppa — running on stdio (19 tools registered)");
+      log("INFO", "Brightspace MCP Server by Rohan Muppa — running on stdio (20 tools registered)");
       log("INFO", "Setup: see README.md for MCP client configuration (Claude Desktop, ChatGPT Desktop, Cursor, etc.)");
     } catch (error) {
       log("ERROR", "MCP Server failed to start", error);
