@@ -90,3 +90,94 @@ export const GetRosterSchema = z.object({
   searchTerm: z.string().optional()
     .describe("Optional search term to filter by name."),
 });
+
+// ── Lecturer / Dropbox tools ──────────────────────────────────────────────────
+
+export const GetDropboxFoldersSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID to list dropbox (assignment) folders for."),
+});
+
+export const GetDropboxSubmissionsSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID to list submissions for."),
+  activeOnly: z.boolean().default(true)
+    .describe("When true, skip submissions that have already been fully graded (feedback published with a score)."),
+  ignoreFeedback: z.boolean().default(false)
+    .describe("When true, omit feedback status from each submission entry to reduce response size."),
+});
+
+export const GetDropboxUserSubmissionsSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID."),
+  userId: z.coerce.number().int().positive()
+    .describe("Brightspace user ID whose submissions to retrieve."),
+  ignoreFeedback: z.boolean().default(false)
+    .describe("When true, omit feedback status from the response."),
+});
+
+export const DownloadDropboxSubmissionFileSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID."),
+  submissionId: z.coerce.number().int().positive()
+    .describe("Submission ID (from get_dropbox_submissions or get_dropbox_user_submissions)."),
+  fileId: z.coerce.number().int().positive()
+    .describe("File ID within the submission."),
+  downloadPath: z.string().min(1)
+    .describe("Absolute path to the local directory where the file should be saved."),
+  customFilename: z.string().optional()
+    .describe("Override filename. If omitted the original submission filename is used."),
+});
+
+export const GetDropboxFeedbackSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID."),
+  entityType: z.enum(["user", "group"])
+    .describe("Whether to fetch feedback for an individual user or a group."),
+  entityId: z.coerce.number().int().positive()
+    .describe("User ID or group ID whose feedback to retrieve."),
+});
+
+export const GetRubricsForObjectSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID whose rubric(s) to retrieve."),
+});
+
+export const PostDropboxFeedbackSchema = z.object({
+  orgUnitId: z.coerce.number().int().positive()
+    .describe("Course / org-unit ID."),
+  folderId: z.coerce.number().int().positive()
+    .describe("Dropbox folder ID."),
+  entityType: z.enum(["user", "group"])
+    .describe("Whether to post feedback for an individual user or a group."),
+  entityId: z.coerce.number().int().positive()
+    .describe("User ID or group ID to post feedback for."),
+  feedbackText: z.string().optional()
+    .describe("Plain-text feedback comment. Provide feedbackText or feedbackHtml (or both)."),
+  feedbackHtml: z.string().optional()
+    .describe("HTML-formatted feedback comment. If both feedbackText and feedbackHtml are provided, feedbackHtml takes precedence for the API body."),
+  score: z.coerce.number().min(0).optional()
+    .describe("Numeric score to assign. Must not exceed the folder's ScoreDenominator."),
+  isGraded: z.boolean().default(false)
+    .describe("If true, mark the submission as graded (publishes the grade). Defaults to false (saves as draft only)."),
+  rubricAssessments: z.array(z.object({
+    rubricId: z.coerce.number().int().positive().describe("Rubric ID."),
+    criteria: z.array(z.object({
+      criterionId: z.coerce.number().int().positive().describe("Criterion ID."),
+      levelId: z.coerce.number().int().positive().describe("Selected level ID."),
+    })).describe("Criterion-level selections for the rubric."),
+  })).optional()
+    .describe("Optional rubric assessment selections. Use get_rubrics_for_object to discover rubric/criterion/level IDs."),
+  confirmPost: z.boolean().default(false)
+    .describe("REQUIRED SAFETY GATE: Must be explicitly set to true to post/save feedback. If false or omitted, the tool returns a preview without posting anything."),
+});

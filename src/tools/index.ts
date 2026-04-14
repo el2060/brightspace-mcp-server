@@ -17,6 +17,15 @@ export { registerGetRoster } from "./get-roster.js";
 export { registerGetSyllabus } from "./get-syllabus.js";
 export { registerGetDiscussions } from "./get-discussions.js";
 
+// Lecturer / Dropbox tools
+export { registerGetDropboxFolders } from "./get-dropbox-folders.js";
+export { registerGetDropboxSubmissions } from "./get-dropbox-submissions.js";
+export { registerGetDropboxUserSubmissions } from "./get-dropbox-user-submissions.js";
+export { registerDownloadDropboxSubmissionFile } from "./download-dropbox-submission-file.js";
+export { registerGetDropboxFeedback } from "./get-dropbox-feedback.js";
+export { registerGetRubricsForObject } from "./get-rubrics-for-object.js";
+export { registerPostDropboxFeedback } from "./post-dropbox-feedback.js";
+
 // Re-export shared helpers and schemas for convenience
 export { toolResponse, errorResponse, sanitizeError } from "./tool-helpers.js";
 export * from "./schemas.js";

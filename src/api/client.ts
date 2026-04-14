@@ -130,6 +130,38 @@ export class D2LApiClient {
   }
 
   /**
+   * Make a POST request to the D2L API with a JSON body.
+   *
+   * @param path - API path (e.g., "/d2l/api/le/1.91/123456/dropbox/folders/1/feedback/user/99")
+   * @param body - Request body (will be JSON-serialized)
+   * @returns Parsed JSON response, or null for 204 No Content responses
+   * @throws ApiError on HTTP errors (401, 403, 429, etc.)
+   * @throws NetworkError on network/fetch failures
+   */
+  async post<T>(path: string, body: unknown): Promise<T | null> {
+    // Enforce rate limit
+    await this.rateLimiter.consume();
+
+    // Get authentication token — auto-reauth if expired
+    let token = await this.tokenManager.getToken();
+    if (!token) {
+      token = await this.tryAutoReauth(path);
+    }
+
+    // Make request with retry logic
+    try {
+      return await this.makePostRequest<T>(path, body, token);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        // Final attempt: auto-reauth and retry once
+        const freshToken = await this.tryAutoReauth(path);
+        return await this.makePostRequest<T>(path, body, freshToken);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Make a GET request to the D2L API and return raw Response object.
    * Used for binary file downloads where JSON parsing is not desired.
    * Does NOT cache responses (file downloads shouldn't be cached).
@@ -374,6 +406,81 @@ export class D2LApiClient {
         `Request to ${path} failed: ${message}`,
         error instanceof Error ? error : undefined,
       );
+    }
+  }
+
+  /**
+   * Internal method to POST JSON to the D2L API.
+   */
+  private async makePostRequest<T>(
+    path: string,
+    body: unknown,
+    token: TokenData,
+    isRetry: boolean = false,
+  ): Promise<T | null> {
+    const url = `${this.baseUrl}${path}`;
+    const headers: Record<string, string> = {
+      ...this.buildAuthHeaders(token),
+      "Content-Type": "application/json",
+    };
+
+    try {
+      log("DEBUG", `${isRetry ? "Retrying" : "Requesting"} POST ${path}`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+
+      if (response.status === 401) {
+        if (isRetry) {
+          log("DEBUG", "Second 401 response on POST, clearing token");
+          await this.tokenManager.clearToken();
+          throw new ApiError(401, path, "Session expired. Please re-authenticate via brightspace-auth.");
+        }
+        log("DEBUG", "First 401 response on POST, attempting retry with fresh token");
+        const freshToken = await this.tokenManager.getToken();
+        if (!freshToken || freshToken.accessToken === token.accessToken) {
+          await this.tokenManager.clearToken();
+          throw new ApiError(401, path, "Session expired. Please re-authenticate via brightspace-auth.");
+        }
+        return await this.makePostRequest<T>(path, body, freshToken, true);
+      }
+
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After");
+        const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+        throw new RateLimitError(path, retryAfterSeconds);
+      }
+
+      if (response.status === 403) {
+        const responseText = await response.text();
+        throw new ApiError(403, path, responseText);
+      }
+
+      if (response.status === 204) {
+        // No Content — success with no body
+        return null;
+      }
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        throw new ApiError(response.status, path, responseText);
+      }
+
+      return await response.json() as T;
+    } catch (error) {
+      if (
+        error instanceof ApiError ||
+        error instanceof RateLimitError ||
+        error instanceof NetworkError
+      ) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new NetworkError(`POST request to ${path} failed: ${message}`, error instanceof Error ? error : undefined);
     }
   }
 
