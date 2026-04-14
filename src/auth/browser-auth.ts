@@ -13,17 +13,21 @@ import type { AppConfig, TokenData } from "../types/index.js";
 import { BrowserAuthError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
 import { PurdueSSOFlow } from "./purdue-sso.js";
+import { MicrosoftSSOFlow } from "./microsoft-sso.js";
 
 export class BrowserAuth {
   private config: AppConfig;
-  private ssoFlow: PurdueSSOFlow;
+  private ssoFlow: PurdueSSOFlow | MicrosoftSSOFlow;
 
   constructor(config: AppConfig) {
     this.config = config;
-    this.ssoFlow = new PurdueSSOFlow({
-      username: config.username,
-      password: config.password,
-    });
+    // Route to the correct SSO handler based on the school's identity provider.
+    // Purdue uses Shibboleth (sso.purdue.edu); all other schools that redirect
+    // to login.microsoftonline.com use the generic Microsoft Entra ID flow.
+    const isMicrosoftSSO = !config.baseUrl.includes("purdue");
+    this.ssoFlow = isMicrosoftSSO
+      ? new MicrosoftSSOFlow({ username: config.username, password: config.password })
+      : new PurdueSSOFlow({ username: config.username, password: config.password });
   }
 
   /**
@@ -921,3 +925,4 @@ export class BrowserAuth {
     }
   }
 }
+
