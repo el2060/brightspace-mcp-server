@@ -1,107 +1,195 @@
-# Brightspace MCP Server
+# Brightspace MCP Server — NP Fork
 
-> **By [Rohan Muppa](https://github.com/rohanmuppa), ECE @ Purdue**
+> **A fork of [RohanMuppa/brightspace-mcp-server](https://github.com/RohanMuppa/brightspace-mcp-server), adapted for Ngee Ann Polytechnic**
 
-Talk to your Brightspace courses with AI. Ask about grades, due dates, announcements, and more. Works with Claude, ChatGPT, Cursor, and Windsurf.
+Connect your AI assistant to Brightspace at Ngee Ann Polytechnic. Ask about course content, announcements, assignments, due dates, class lists, syllabus, and discussions — right from your AI coding environment.
 
-This is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that connects your AI to D2L Brightspace so it can pull your grades, assignments, syllabus, and course content on demand.
-
-Works with any school that uses D2L Brightspace, including Purdue, USC, and hundreds more.
+This is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that connects an AI client to the NP Brightspace instance (`nplms.polite.edu.sg`) via D2L's web interface. It is designed for **NP lecturers and instructional staff** who want to use AI tools for course support, content retrieval, and workflow assistance.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/RohanMuppa/brightspace-mcp-server/main/docs/how-it-works.svg" alt="Architecture diagram" width="100%">
 </p>
 
-## Try It
+---
 
-> "Download my lecture slides and turn them into interactive flashcards"
-> "Grab every assignment rubric and build me a visual dashboard of what I need to hit for an A"
+## About This Fork
 
-## Install
+This fork is maintained separately from the upstream repository to target the NP Brightspace environment and lecturer-focused workflows. It is intended to support:
 
-**You need:** [Node.js 18+](https://nodejs.org/) (download the LTS version)
+- **Course content retrieval** — slides, PDFs, module content, and syllabuses
+- **Announcements** — retrieve and summarise lecturer announcements
+- **Assignments and due dates** — list upcoming deadlines across all courses
+- **Class lists** — access student enrolment information per course
+- **Discussions** — read and summarise discussion threads where available
 
-**Option 1: Let your AI do it**
+**Planned / future work** (not yet implemented):
 
-Paste this into Claude Code, Cursor chat, Windsurf, Copilot, Codex, or any AI coding assistant:
+- Assignment dropbox review and submission summaries
+- Rubric-guided feedback drafting
+- Automated progress tracking per student or cohort
 
-```
-I want to connect my Brightspace LMS to this AI client using the brightspace-mcp-server package on npm. Here's the repo: https://github.com/RohanMuppa/brightspace-mcp-server
+If a feature is listed as planned, it is not yet functional. Do not rely on it in production workflows.
 
-Do everything needed to get it working:
+---
 
-1. First, check if Node.js 18+ is installed. If not, tell me how to install it and stop.
+## NP Setup
 
-2. Run the setup wizard to save my Brightspace credentials:
-   npx brightspace-mcp-server setup
-   (If I'm a Purdue student, use: npx brightspace-mcp-server setup --purdue)
-   This will open a browser for login and MFA. Let me complete that before continuing.
+### Prerequisites
 
-3. After setup finishes, configure this AI client to use the MCP server.
-   The server command is: npx -y brightspace-mcp-server@latest
-   Search the internet for how to configure MCP servers in general for
-   whatever client I'm using. Every client has a different config format
-   and file path. On Windows, npx must be wrapped with cmd /c.
+- [Node.js 18+](https://nodejs.org/) — download the LTS version
+- Access to [nplms.polite.edu.sg](https://nplms.polite.edu.sg) with your NP staff account
+- Microsoft SSO login with Duo MFA (required during the auth step — keep Duo ready)
 
-4. Tell me to restart this AI client so it picks up the new MCP server.
-```
-
-**Option 2: Run it yourself**
+### Step 1 — Run the setup wizard
 
 ```bash
 npx brightspace-mcp-server setup
 ```
 
-Purdue students can add `--purdue` to skip entering the school URL:
+When prompted for your school URL, enter:
 
-```bash
-npx brightspace-mcp-server setup --purdue
+```
+https://nplms.polite.edu.sg
 ```
 
-The wizard walks you through login, MFA, and auto configures Claude Desktop and Cursor. Restart your AI client when it finishes.
+The wizard will open a browser window. **Sign in with your NP Microsoft SSO credentials and approve the Duo push when prompted.** Do not close the browser until the wizard completes.
 
-<details>
-<summary>Using a different client? Configure it manually.</summary>
+After setup, credentials are saved to `~/.brightspace-mcp/config.json` on your machine.
 
-Search your client's docs for how to add an MCP server. The server command to register is:
+### Step 2 — Configure VS Code Copilot Agent mode (recommended)
+
+This fork is optimised for use with **VS Code Copilot in Agent mode** via a local stdio MCP server.
+
+Add the following to your VS Code `settings.json` (or your workspace `.vscode/mcp.json`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "brightspace-np": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "brightspace-mcp-server@latest"]
+      }
+    }
+  }
+}
+```
+
+On **Windows**, wrap the command:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "brightspace-np": {
+        "type": "stdio",
+        "command": "cmd",
+        "args": ["/c", "npx", "-y", "brightspace-mcp-server@latest"]
+      }
+    }
+  }
+}
+```
+
+Restart VS Code after saving. Copilot Agent mode will now have access to your NP Brightspace data.
+
+### Step 3 — Other AI clients
+
+The server works with any MCP-compatible client (Claude Desktop, Cursor, Windsurf, etc.). Register the server command:
 
 ```
 npx -y brightspace-mcp-server@latest
 ```
 
-On **Windows**, npx must be wrapped: `cmd /c npx -y brightspace-mcp-server@latest`
+Search your client's documentation for how to add an MCP server via stdio.
 
-You still need to run `npx brightspace-mcp-server setup` first to save your credentials.
-
-</details>
+---
 
 ## Session Expired?
 
-Sessions re-authenticate automatically. If auto-reauth fails (e.g., you missed the Duo push):
+Sessions re-authenticate automatically. If auto-reauth fails (e.g., you missed the Duo push on your phone):
 
 ```bash
 npx brightspace-mcp-server auth
 ```
 
+A browser window will open. Sign in with Microsoft SSO and approve the Duo prompt.
+
+---
+
 ## What You Can Ask About
 
 | Topic | Examples |
 |-------|---------|
-| Grades | "Am I passing all my classes?" · "Compare my grades across all courses" |
-| Assignments | "What's due in the next 48 hours?" · "Summarize every assignment I haven't turned in yet" |
-| Announcements | "Did any professor post something important today?" · "What did my CS prof announce this week?" |
-| Course content | "Find the midterm review slides" · "Download every PDF from Module 5" |
-| Roster | "Who are the TAs for ECE 264?" · "Get me my instructor's email" |
-| Discussions | "What are people saying in the final project thread?" · "Summarize the latest discussion posts" |
-| Planning | "Build me a study schedule based on my upcoming due dates" · "Which class needs the most attention right now?" |
+| Announcements | "What announcements have I posted this week?" · "Summarise all announcements across my courses" |
+| Assignments | "What assignments are due in the next two weeks?" · "List all unsubmitted assignments for IT1234" |
+| Course content | "Find the Week 3 lecture slides for my networking module" · "List all PDFs uploaded to Module 2" |
+| Class lists | "Who is enrolled in my IT2001 class?" · "Get the student list for all my courses this semester" |
+| Syllabus | "What are the learning outcomes for this module?" · "Summarise the assessment breakdown for IT3001" |
+| Discussions | "What are students saying in the project discussion thread?" · "Summarise the latest posts in the Week 5 discussion" |
+| Due dates | "Give me a timeline of all upcoming deadlines across my courses" |
+
+---
+
+## Example Prompts
+
+The following are practical prompts for NP lecturers using this server in VS Code Copilot Agent mode:
+
+```
+List all the announcements I've made across my courses this semester.
+```
+
+```
+What assignments are due in my IT2001 course in the next two weeks?
+```
+
+```
+Summarise the discussion posts in the Week 4 forum for IT3456.
+```
+
+```
+What course content files are available in Module 3 of my networking module?
+```
+
+```
+Who is currently enrolled in my Tuesday afternoon IT1234 class?
+```
+
+```
+What are the assessment components and weightings listed in the syllabus for IT2001?
+```
+
+---
+
+## Lecturer Workflows
+
+This server is designed to support the following lecturer and instructional workflows:
+
+**Course preparation**
+Use the AI to retrieve and review your own course content — slides, module pages, and syllabuses — so you can quickly reference materials without logging into the portal.
+
+**Announcement drafting**
+Retrieve past announcements for context, then use the AI to draft a new one in a consistent tone.
+
+**Discussion monitoring**
+Summarise student discussion threads to identify common questions or issues before a tutorial session.
+
+**Due date planning**
+Get an overview of all deadlines across your modules to spot clashes or plan assessment spacing.
+
+**Future: Assignment review and feedback drafting** *(planned)*
+Once dropbox review tools are implemented, you will be able to retrieve student submissions and use the AI to draft rubric-guided feedback. This is not yet available.
+
+---
 
 ## Troubleshooting
 
-**"Not authenticated"** → Run `npx brightspace-mcp-server auth`
+**"Not authenticated"** → Run `npx brightspace-mcp-server auth` and complete the Microsoft SSO + Duo flow
 
-**AI client not responding** → Quit and reopen it completely (not just close the window)
+**AI client not responding** → Quit and reopen the client completely (not just close the window)
 
-**Need to redo setup** → Run `npx brightspace-mcp-server setup` again
+**Need to redo setup** → Run `npx brightspace-mcp-server setup` again and re-enter `https://nplms.polite.edu.sg`
 
 **Config location** → `~/.brightspace-mcp/config.json` (you can edit this directly)
 
@@ -114,6 +202,7 @@ npx brightspace-mcp-server auth
 **Auth hangs or browser won't open**
 
 Delete stale session files and retry:
+
 ```bash
 rm -rf ~/.d2l-session/session.json ~/.d2l-session/storage-state.json ~/.d2l-session/browser-data/SingletonLock
 npx brightspace-mcp-server auth
@@ -122,45 +211,31 @@ npx brightspace-mcp-server auth
 **Still running an old version after update**
 
 npx caches packages locally. Clear the cache to force a fresh download:
+
 ```bash
 npx clear-npx-cache
 npx brightspace-mcp-server@latest
 ```
+
+---
 
 ## Security
 
 - Credentials stay on your machine at `~/.brightspace-mcp/config.json` (restricted permissions)
 - Session tokens are encrypted (AES-256-GCM)
 - All traffic to Brightspace is HTTPS
-- Nothing is sent anywhere except your school's login page
-
-## Contributing & Forking
-
-Want to add your school, build a new tool, or fix something? Fork the repo, make your changes, and open a pull request. If it gets merged, it ships to every user automatically.
-
-```bash
-git clone https://github.com/RohanMuppa/brightspace-mcp-server.git
-cd brightspace-mcp-server
-npm install
-npm run dev
-```
-
-**Add your school:** Add a preset to `SCHOOL_PRESETS` in `src/setup.ts`. If your school's login flow is different, add a handler in `src/auth/`.
-
-**Add a new tool:** Create a file in `src/tools/`, add the schema in `schemas.ts`, export it in `src/tools/index.ts`, and register it in `src/index.ts`. Use any existing tool as a template.
-
-**Run your own version:** You can also fork and run it independently. Clone it, build it, and point your AI client to the local `build/index.js` instead of using `npx`. No npm needed. Just know that forks don't receive updates from this repo automatically. If your changes could help others, consider opening a PR.
-
-Licensed under the MIT License.
-
-## Updates
-
-Automatic. Every time your AI client starts a session, it runs `npx brightspace-mcp-server@latest` which pulls the newest version from npm. No action needed.
-
-If you ever suspect you're on an old version, run `npm cache clean --force` to clear the cache.
+- Nothing is sent anywhere except `nplms.polite.edu.sg` and your Microsoft/Duo login pages
 
 ---
 
-Proudly made for Boilermakers by [Rohan Muppa](https://github.com/rohanmuppa) 🚂
+## Attribution
 
-[Report a bug](https://github.com/rohanmuppa/brightspace-mcp-server/issues) · MIT · Copyright 2026 Rohan Muppa
+This repository is a fork of **[RohanMuppa/brightspace-mcp-server](https://github.com/RohanMuppa/brightspace-mcp-server)**, originally created by [Rohan Muppa](https://github.com/rohanmuppa). The core MCP server implementation, authentication flow, tool architecture, and npm package are his work. This fork adapts the project for use at Ngee Ann Polytechnic.
+
+Upstream improvements and bug fixes should be credited to the original repository. If you find a bug that exists in the upstream project, consider opening a pull request there as well.
+
+Licensed under the [MIT License](./LICENSE). Copyright 2026 Rohan Muppa.
+
+---
+
+[Report an issue (this fork)](https://github.com/el2060/brightspace-mcp-server/issues) · [Upstream repository](https://github.com/RohanMuppa/brightspace-mcp-server)
