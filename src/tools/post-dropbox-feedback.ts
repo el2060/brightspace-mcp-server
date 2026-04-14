@@ -26,6 +26,16 @@ interface D2LRubricAssessmentBody {
   }>;
 }
 
+/** Escape HTML special characters in plain text for safe inclusion in HTML */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Register post_dropbox_feedback tool
  */
@@ -73,7 +83,7 @@ export function registerPostDropboxFeedback(
 
         // Build the preview/body
         const effectiveHtml =
-          feedbackHtml ?? (feedbackText ? `<p>${feedbackText}</p>` : null);
+          feedbackHtml ?? (feedbackText ? `<p>${escapeHtml(feedbackText)}</p>` : null);
         const effectiveText = feedbackText ?? (feedbackHtml ? "(see HTML)" : null);
 
         const feedbackBody: D2LFeedbackBody = {

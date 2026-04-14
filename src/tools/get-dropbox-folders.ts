@@ -108,7 +108,7 @@ export function registerGetDropboxFolders(
             rubricId: r.RubricId,
             name: r.Name,
           })) ?? [],
-          hasFeedback: (f.Assessment?.Rubrics?.length ?? 0) > 0,
+          hasRubrics: (f.Assessment?.Rubrics?.length ?? 0) > 0,
         }));
 
         log("INFO", `get_dropbox_folders: ${folders.length} folders for orgUnit ${orgUnitId}`);
