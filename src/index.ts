@@ -29,6 +29,13 @@ import {
   registerGetRoster,
   registerGetSyllabus,
   registerGetDiscussions,
+  registerGetDropboxFolders,
+  registerGetDropboxSubmissions,
+  registerGetDropboxUserSubmissions,
+  registerDownloadDropboxSubmissionFile,
+  registerGetDropboxFeedback,
+  registerGetRubricsForObject,
+  registerPostDropboxFeedback,
 } from "./tools/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -187,13 +194,23 @@ if (subcommand === 'setup') {
       registerGetRoster(server, apiClient);
       registerGetSyllabus(server, apiClient);
       registerGetDiscussions(server, apiClient);
-      log("DEBUG", "MCP tools registered (11 core tools, total 12 with check_auth)");
+
+      // Lecturer / Dropbox tools
+      registerGetDropboxFolders(server, apiClient);
+      registerGetDropboxSubmissions(server, apiClient);
+      registerGetDropboxUserSubmissions(server, apiClient);
+      registerDownloadDropboxSubmissionFile(server, apiClient);
+      registerGetDropboxFeedback(server, apiClient);
+      registerGetRubricsForObject(server, apiClient);
+      registerPostDropboxFeedback(server, apiClient);
+
+      log("DEBUG", "MCP tools registered (18 core tools, total 19 with check_auth)");
 
       // Connect stdio transport
       const transport = new StdioServerTransport();
       await server.connect(transport);
 
-      log("INFO", "Brightspace MCP Server by Rohan Muppa — running on stdio (12 tools registered)");
+      log("INFO", "Brightspace MCP Server by Rohan Muppa — running on stdio (19 tools registered)");
       log("INFO", "Setup: see README.md for MCP client configuration (Claude Desktop, ChatGPT Desktop, Cursor, etc.)");
     } catch (error) {
       log("ERROR", "MCP Server failed to start", error);

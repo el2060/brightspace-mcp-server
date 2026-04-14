@@ -95,6 +95,36 @@ npx brightspace-mcp-server auth
 | Discussions | "What are people saying in the final project thread?" · "Summarize the latest discussion posts" |
 | Planning | "Build me a study schedule based on my upcoming due dates" · "Which class needs the most attention right now?" |
 
+## Lecturer / Instructor Tools
+
+Educators can use the following tools to review submissions, download student files, and draft rubric-based feedback — all without leaving VS Code Copilot Agent mode.
+
+| Tool | What it does | Access |
+|------|--------------|--------|
+| `get_dropbox_folders` | List all assignment folders for a course with due dates, submission types, and rubric info | Read-only |
+| `get_dropbox_submissions` | List all student submissions for a folder (name, date, files, late status, feedback state) | Read-only |
+| `get_dropbox_user_submissions` | Retrieve one student's submissions and existing feedback | Read-only |
+| `download_dropbox_submission_file` | Download a submitted file to a local directory | Read-only |
+| `get_dropbox_feedback` | View existing feedback/score/rubric assessment for a student | Read-only |
+| `get_rubrics_for_object` | Fetch rubric criteria, levels, and point values for an assignment | Read-only |
+| `post_dropbox_feedback` | Save draft feedback or publish a grade (**requires `confirmPost=true`**) | Write |
+
+### Example prompts
+
+```
+"List submissions for Assignment 2"
+"Download Jane Tan's latest submission for the final project"
+"Review this submission against my rubric and suggest a grade"
+"Show existing feedback for student 12345"
+"Save this as draft feedback with a score of 88"
+```
+
+### Safety notes
+
+- `post_dropbox_feedback` defaults to **draft mode** (`isGraded=false`) so grades are never auto-published.
+- Nothing is written to Brightspace unless you pass `confirmPost: true`.
+- Set `isGraded: true` only when you intend to publish the grade and make it visible to students.
+
 ## Troubleshooting
 
 **"Not authenticated"** → Run `npx brightspace-mcp-server auth`
