@@ -53,7 +53,7 @@ export function loadConfig(): AppConfig {
   }
 
   return {
-    baseUrl: process.env.D2L_BASE_URL || store?.baseUrl || "https://purdue.brightspace.com",
+    baseUrl: process.env.D2L_BASE_URL || store?.baseUrl || "https://nplms.polite.edu.sg",
     sessionDir,
     tokenTtl,
     headless,
