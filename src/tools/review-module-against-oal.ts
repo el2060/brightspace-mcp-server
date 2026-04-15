@@ -313,10 +313,10 @@ export function registerReviewModuleAgainstOal(
 
         // Load saved storage state (cookies written by browser-auth.ts)
         const storageStatePath = path.join(config.sessionDir, "storage-state.json");
-        let storageStateOption: { path: string } | undefined;
+        let storageStateOption: string | undefined;
         try {
           await fs.access(storageStatePath);
-          storageStateOption = { path: storageStatePath };
+          storageStateOption = storageStatePath;
           log("DEBUG", `review_module_against_oal: using saved storage state at ${storageStatePath}`);
         } catch {
           log("WARN", "review_module_against_oal: no saved storage state found — browser may redirect to login");
