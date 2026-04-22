@@ -55,12 +55,27 @@ export class MicrosoftSSOFlow {
    * Execute the full Microsoft Entra ID SSO login flow.
    * Handles email entry, password entry, MFA (Duo/Authenticator push),
    * and the "Stay signed in?" KMSI prompt.
+   *
+   * If the browser lands on /d2l/home before or during the login form
+   * (e.g. because Microsoft SSO auto-authenticated via an existing session),
+   * the remaining form steps are skipped and true is returned immediately.
    */
   async login(page: Page): Promise<boolean> {
     try {
       log("INFO", "Starting Microsoft Entra ID SSO login flow");
 
-      await this.enterEmail(page);
+      // Fast path: already on Brightspace home (e.g. SSO session cookie still valid)
+      if (page.url().includes("/d2l/home")) {
+        log("INFO", "Already on Brightspace home — skipping SSO login form");
+        return true;
+      }
+
+      const alreadyAuthenticated = await this.enterEmail(page);
+      if (alreadyAuthenticated) {
+        log("INFO", "Redirected to Brightspace home during SSO — login successful");
+        return true;
+      }
+
       await this.enterPassword(page);
       await this.handleMFA(page);
       await this.handleKMSI(page);
@@ -93,10 +108,28 @@ export class MicrosoftSSOFlow {
     }
   }
 
-  private async enterEmail(page: Page): Promise<void> {
+  private async enterEmail(page: Page): Promise<boolean> {
     try {
-      log("DEBUG", "Waiting for Microsoft email input");
-      await page.waitForSelector(SELECTORS.emailInput, { timeout: 30000 });
+      log("DEBUG", "Waiting for Microsoft email input or direct redirect to Brightspace");
+
+      // Race: email input appears (normal flow) vs. already redirected to /d2l/home (auto-SSO).
+      // Register .catch() handlers on both promises before the race so that whichever
+      // one "loses" (times out after the winner settles) does not become an unhandled rejection.
+      const emailPromise = page
+        .waitForSelector(SELECTORS.emailInput, { timeout: 30000 })
+        .then(() => "email" as const);
+      const homePromise = page
+        .waitForURL(/\/d2l\/home/, { timeout: 30000 })
+        .then(() => "home" as const);
+      emailPromise.catch(() => {});
+      homePromise.catch(() => {});
+
+      const result = await Promise.race([emailPromise, homePromise]);
+
+      if (result === "home") {
+        log("INFO", "Redirected to Brightspace home before email prompt — auto-SSO detected");
+        return true;
+      }
 
       if (!this.config.username) {
         throw new BrowserAuthError("Username is required for SSO login", "credentials");
@@ -108,6 +141,7 @@ export class MicrosoftSSOFlow {
       // Click Next / Submit to proceed to password page
       await page.click(SELECTORS.emailNext);
       await page.waitForLoadState("networkidle", { timeout: 15000 });
+      return false;
     } catch (error) {
       if (error instanceof BrowserAuthError) throw error;
       throw new BrowserAuthError("Failed to enter email", "credentials", error as Error);
